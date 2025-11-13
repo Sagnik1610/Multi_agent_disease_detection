@@ -1,20 +1,11 @@
 import os
-
 import time
 import json
 import argparse
-
 import os.path as osp
 from tqdm import tqdm
-
-from autogen import (
-    GroupChat,
-    UserProxyAgent,
-    GroupChatManager,
-    AssistantAgent,
-    config_list_from_json,
-)
-
+from autogen_agentchat.agents import AssistantAgent
+from utils.krutrim_client import KrutrimModelClient
 from utils import *
 
 def parse_args():
@@ -28,8 +19,8 @@ def parse_args():
     parser.add_argument(
         "--model_name",
         type=str,
-        default="x_gpt35_turbo",
-        choices=["x_gpt35_turbo", "x_gpt4_turbo", "x_gpt4o"],
+        default="DeepSeek-R1-Llama-8B",
+        choices=["x_gpt35_turbo", "x_gpt4_turbo", "x_gpt4o", "DeepSeek-R1-Llama-8B"],
         help="the llm models",
     )
     parser.add_argument(
@@ -110,6 +101,8 @@ def process_single_case(args, dataset, idx, output_dir, model_config):
     else:
         raise NotImplementedError
 
+    krutrim_client = KrutrimModelClient(config=model_config)
+
     Docs = []
     for index in range(args.num_doctors):
         name = f"Doctor{index}"
@@ -118,7 +111,7 @@ def process_single_case(args, dataset, idx, output_dir, model_config):
 
         Doc = AssistantAgent(
             name=name,
-            llm_config=model_config,
+            model_client=krutrim_client,
             system_message=doc_system_message,
         )
         Docs.append(Doc)
@@ -129,45 +122,25 @@ def process_single_case(args, dataset, idx, output_dir, model_config):
 
     Supervisor = AssistantAgent(
         name="Supervisor",
-        llm_config=model_config,
+        model_client=krutrim_client,
         system_message=supervisor_system_message,
     )
 
-    agents = Docs + [Supervisor]
-    groupchat = GroupChat(
-        agents=agents,
-        messages=[],
-        max_round=args.n_round,
-        speaker_selection_method="auto",  # "auto" or "round_robin": 下一个发言者以循环方式选择，即按照agents中提供的顺序进行迭代.  效果不太理想，需要更改prompt
-        admin_name="Supervisor",
-        select_speaker_auto_verbose=False,
-        allow_repeat_speaker=True,
-        send_introductions=False,
-        max_retries_for_selecting_speaker=args.n_round // (1 + args.num_doctors),
-    )
-
-    time.sleep(5)
-    manager = GroupChatManager(
-        groupchat=groupchat,
-        llm_config=model_config,
-        is_termination_msg=lambda x: x.get("content", "").find("TERMINATE") >= 0,
-    )
     inital_message = get_inital_message(patient_history=case_presentation, stage=args.stage)
 
-    output = Supervisor.initiate_chat(
-        manager,
-        message=inital_message,
+    chat_result = Supervisor.run(
+        task=inital_message,
     )
     # case cost
-    for agent in agents:
+    for agent in Docs + [Supervisor]:
         case_cost += agent.client.total_usage_summary["total_cost"]
     # Save the complete conversation
     conversation_path = osp.join(output_dir, conversation_name)
     with open(conversation_path, "w") as file:
-        json.dump(output.chat_history, file, indent=4)
+        json.dump(chat_result.messages, file, indent=4)
     critic_output = [
         item
-        for i, item in enumerate(output.chat_history)
+        for i, item in enumerate(chat_result.messages)
         if item.get("name") == None
         and '"Most Likely Diagnosis":' in item.get("content")
     ]
@@ -199,19 +172,8 @@ def process_single_case(args, dataset, idx, output_dir, model_config):
 def main():
     args = parse_args()
 
-    filter_criteria = {
-        "tags": [args.model_name],
-    }
-
-    config_list = config_list_from_json(
-        env_or_file=args.config, filter_dict=filter_criteria
-    )
-
     model_config = {
-        "cache_seed": None,
-        "temperature": 1,
-        "config_list": config_list,
-        "timeout": 300,
+        "model": args.model_name,
     }
 
     dataset = MedDataset(dataname=args.dataset_name)
@@ -230,4 +192,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
