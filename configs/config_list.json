@@ -1,0 +1,8 @@
+[
+  {
+    "model": "DeepSeek-R1-Llama-8B",
+    "api_key": "NotRequired",
+    "base_url": "krutrim_cloud",
+    "tags": ["doctor_agent"]
+  }
+]
