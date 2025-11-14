@@ -6,6 +6,7 @@ class KrutrimModelClient(ChatCompletionClient):
     def __init__(self, config: Dict):
         self.client = KrutrimCloud()
         self.model = config.get("model")
+        self.total_tokens = 0
 
     async def create(
         self,
@@ -23,9 +24,10 @@ class KrutrimModelClient(ChatCompletionClient):
             stream=False,
             **extra_create_args
         )
+        self.total_tokens += response.usage.total_tokens
         return CreateResult(
             messages=[{"role": "assistant", "content": response.choices[0].message.content}],
-            usage=RequestUsage(total_tokens=response.usage.total_tokens)
+            usage=RequestUsage(prompt_tokens=response.usage.total_tokens, completion_tokens=0)
         )
 
     async def create_stream(
@@ -48,17 +50,17 @@ class KrutrimModelClient(ChatCompletionClient):
             yield chunk.choices[0].delta.content or ""
         yield CreateResult(
             messages=[{"role": "assistant", "content": ""}],
-            usage=RequestUsage(total_tokens=0)
+            usage=RequestUsage(prompt_tokens=0, completion_tokens=0)
         )
 
     async def close(self) -> None:
         pass
 
     def actual_usage(self) -> RequestUsage:
-        return RequestUsage(total_tokens=0)
+        return RequestUsage(prompt_tokens=0, completion_tokens=0)
 
     def total_usage(self) -> RequestUsage:
-        return RequestUsage(total_tokens=0)
+        return RequestUsage(prompt_tokens=self.total_tokens, completion_tokens=0)
 
     def count_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Any] = []) -> int:
         return 0
