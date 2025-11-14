@@ -133,7 +133,7 @@ def process_single_case(args, dataset, idx, output_dir, model_config):
     )
     # case cost
     for agent in Docs + [Supervisor]:
-        case_cost += agent._model_client.total_usage().total_tokens
+        case_cost += agent._model_client.total_usage().prompt_tokens
     # Save the complete conversation
     conversation_path = osp.join(output_dir, conversation_name)
     with open(conversation_path, "w") as file:
