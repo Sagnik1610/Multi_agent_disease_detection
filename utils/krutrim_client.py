@@ -27,7 +27,9 @@ class KrutrimModelClient(ChatCompletionClient):
         self.total_tokens += response.usage.total_tokens
         return CreateResult(
             messages=[{"role": "assistant", "content": response.choices[0].message.content}],
-            usage=RequestUsage(prompt_tokens=response.usage.total_tokens, completion_tokens=0)
+            usage=RequestUsage(prompt_tokens=response.usage.total_tokens, completion_tokens=0),
+            finish_reason="stop",
+            cached=False
         )
 
     async def create_stream(
@@ -50,7 +52,9 @@ class KrutrimModelClient(ChatCompletionClient):
             yield chunk.choices[0].delta.content or ""
         yield CreateResult(
             messages=[{"role": "assistant", "content": ""}],
-            usage=RequestUsage(prompt_tokens=0, completion_tokens=0)
+            usage=RequestUsage(prompt_tokens=0, completion_tokens=0),
+            finish_reason="stop",
+            cached=False
         )
 
     async def close(self) -> None:
